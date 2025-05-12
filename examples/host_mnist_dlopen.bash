@@ -11,11 +11,15 @@ DIR="$( cd -P "$( dirname "$SOURCE" )" >/dev/null 2>&1 && pwd )"
 DIR=$DIR/../
 
 PROFILING=false
+ITERATIONS=1
 for arg in "$@"
 do
     if [ "$arg" == "--profiling" ]; then
         PROFILER_FLAG="-DPROFILER=ON"
         PROFILING=true
+    fi
+    if [[ $arg == --iterations=* ]]; then
+        ITERATIONS="${arg#--iterations=}"
     fi
 done
 
@@ -50,4 +54,10 @@ fi
 
 # Native execution
 export LD_LIBRARY_PATH=${DIR}/models:${DIR}/build/release/lib
-./build/release/bin/nn_packed
+
+for ((i=0; i<ITERATIONS; i++)); do
+    echo "Iteration $i"
+    ./build/release/bin/nn_packed
+done
+
+python3 compile/eval.py
