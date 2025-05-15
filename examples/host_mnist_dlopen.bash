@@ -50,4 +50,8 @@ fi
 
 # Native execution
 export LD_LIBRARY_PATH=${DIR}/models:${DIR}/build/release/lib
-./build/release/bin/nn_packed
+
+for ((i=0; i<=10; i++))
+do
+    ./build/release/bin/nn_packed
+done

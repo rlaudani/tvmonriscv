@@ -18,3 +18,5 @@ standalone_crt
 # gprov
 gmon.out
 *.txt
+
+tvm_auto_scheduler_data
