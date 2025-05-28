@@ -25,24 +25,25 @@ add_library(tvm_runtime_pack SHARED ${SOURCES_RT})
 target_compile_definitions(tvm_runtime_pack PUBLIC -DDMLC_USE_LOGGING_LIBRARY=\<tvm/runtime/logging.h\>)
 install(TARGETS tvm_runtime_pack DESTINATION lib)
 
-option(PROFILER "Build with profiler." OFF)
+# Compile functions.cc as shared library
+set(PREV_CXX_FLAGS "${CMAKE_CXX_FLAGS}")
+set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fPIC")
+add_library(profiling_functions SHARED compile/gprov/functions.cc)
 
-if(PROFILER)
-    # Compile functions.cc as shared library
-    set(PREV_CXX_FLAGS "${CMAKE_CXX_FLAGS}")
-    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fPIC")
-    add_library(custom_functions SHARED compile/gprov/functions.cc)
-    install(TARGETS custom_functions DESTINATION lib)
+# TODO: Add to code
+target_compile_definitions(profiling_functions PRIVATE RUNTIME_STATS_PATH="${RUNTIME_STATS_PATH}")
 
-    # Create packed exeutable
-    set(CMAKE_CXX_FLAGS "${PREV_CXX_FLAGS}")
-    add_executable(nn_packed execute/execute_mnist.cc)
-    target_link_libraries(nn_packed PRIVATE custom_functions tvm_runtime_pack dl pthread)
-    install(TARGETS nn_packed DESTINATION bin)
+install(TARGETS profiling_functions DESTINATION lib)
 
-else()
-    # Create packed exeutable
-    add_executable(nn_packed execute/execute_mnist.cc)
-    target_link_libraries(nn_packed PRIVATE tvm_runtime_pack dl pthread)
-    install(TARGETS nn_packed DESTINATION bin)
-endif()
+# Create packed exeutable
+set(CMAKE_CXX_FLAGS "${PREV_CXX_FLAGS}")
+
+# TODO: Change to execute_model.cc
+# add_executable("${EXEC_NAME}" execute/execute_mnist.cc)
+add_executable(${EXEC_NAME} execute/execute_model.cc)
+
+# TODO: Add all variables
+target_compile_definitions(${EXEC_NAME} PRIVATE MODEL_LIB_PATH="${MODEL_LIB_PATH}" N=1 C=3 H=224 W=224)
+
+target_link_libraries(${EXEC_NAME} PRIVATE profiling_functions tvm_runtime_pack dl pthread)
+install(TARGETS ${EXEC_NAME} DESTINATION bin)

@@ -7,14 +7,16 @@ import torch.nn as nn
 import torch.nn.functional as F
 import torchvision.models as nn_models
 import ctypes
+import tvm.testing
 
-import lowering.lowering_pytorch
+import lowering.timing_functions_injection
+from strategy.x86 import conv2d, dense
 
 # False: no printf commands, True: insert printf commands
-INJECT_PRINT_COMMANDS = True
+INJECT_PRINT_COMMANDS = False
 
 # False: Simple CNN, True: AlexNet
-ALEXNET = False
+LARGE_NETWORK = True
 
 num_cores = 1
 os.environ["TVM_NUM_THREADS"] = f"{num_cores}"
@@ -24,34 +26,10 @@ repo_path = os.path.abspath(
 )
 
 
-class SimpleCNN(nn.Module):
-    def __init__(self):
-        super(SimpleCNN, self).__init__()
-        self.conv1 = nn.Conv2d(in_channels=1, out_channels=16, kernel_size=3, stride=1, padding=1)
-        self.fc1 = nn.Linear(16 * 28 * 28, 10)
-
-    def forward(self, x):
-        x = F.relu(self.conv1(x))
-        x = x.view(x.size(0), -1)
-        x = self.fc1(x)
-        return x
-
-
 def create_lib(mod, params, target, name):
 
-    if INJECT_PRINT_COMMANDS:
-        opt_config = {
-            "tir.add_lower_pass": [
-                (0, lowering.lowering_pytorch.inject_tracing_conv2d())
-            ]
-        }
-
-        with tvm.transform.PassContext(config=opt_config, opt_level=4):
-            lib = tvm.relay.build(mod, target=target, params=params)
-    
-    else:
-        with tvm.transform.PassContext(opt_level=4):
-            lib = tvm.relay.build(mod, target=target, params=params)
+    with tvm.transform.PassContext(opt_level=4):
+        lib = tvm.relay.build(mod, target=target, params=params)
 
     output_dir = f"{repo_path}/models"
     lib_name = f"{name}_pytorch_lib.so"
@@ -62,44 +40,49 @@ def create_lib(mod, params, target, name):
 
 
 def run(lib_name):
-    ctypes.CDLL("/net/heap/laudani/tvmonriscv/build/release/build/libcustom_functions.so", ctypes.RTLD_GLOBAL)
+    # ctypes.CDLL("/net/heap/laudani/tvmonriscv/build/release/build/libprofiling_functions.so", ctypes.RTLD_GLOBAL)
     lib: tvm.runtime.Module = tvm.runtime.load_module(f"{repo_path}/models/{lib_name}")
-    dev = tvm.cpu()
     module = graph_executor.GraphModule(lib["default"](dev))
     module.set_input("input0", tvm.nd.array(input_tensor.numpy()))
     print("Evaluate inference time cost.")
     # timing_results = module.benchmark(
     #     device=dev,
-    #     repeat=20,
-    #     number=5,
-    #     cooldown_interval_ms=10,
+    #     repeat=50,
+    #     number=2,
     #     end_to_end=False
     # )
     # print(timing_results)
-    start_time = time.time()
-    module.run()
-    runtime = time.time() - start_time
-    print(f"Runtime: {runtime}")
+
+    for i in range(3) :
+        start_time = time.time()
+        module.run()
+        runtime = time.time() - start_time
+        print(f"Runtime: {runtime}")
 
 
 if __name__ == "__main__":
-    if ALEXNET:
-        model_name = "alexnet"
-        model = nn_models.AlexNet().eval()
-        input_shape = (1, 3, 224, 224)
-    else:
-        model_name = "simple_cnn"
-        model = SimpleCNN().eval()
-        input_shape = (1, 1, 28, 28)
+    model_name = "vgg16"
+    model = nn_models.vgg16().eval()
+    input_shape = (1, 3, 224, 224)
 
     input_tensor = torch.randn(input_shape)
 
     model = torch.jit.trace(model, input_tensor).eval()
-    
+
     input_name = "input0"
     shape_list = [(input_name, input_shape)]
 
-    target = tvm.target.Target("llvm")
+    target = tvm.target.Target("llvm -mcpu=znver2")
+    dev = tvm.cpu(0)
+
+    # target = tvm.target.Target("llvm", host="llvm")
+    # dev = tvm.cpu(0)
+
+    #target, dev = tvm.testing.enabled_targets()[0]
+
+    print("Target: ", target)
+    print("Device: ", dev)
+
     mod, params = tvm.relay.frontend.pytorch.from_pytorch(model, shape_list)
     
     lib_name = create_lib(mod, params, target, model_name)
