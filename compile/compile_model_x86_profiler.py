@@ -8,9 +8,11 @@ import torch
 import torchvision.models as models
 import ctypes
 
+from tvm import relay, auto_scheduler
+
 # TODO: Rename function
 import lowering.timing_functions_injection
-from strategy.x86 import conv2d, dense
+# from strategy.x86 import conv2d, dense
 
 repo_path = os.path.abspath(
     os.path.join(os.path.dirname(__file__), "..")
@@ -28,34 +30,21 @@ def build_lib(model: torch.nn.Module, input_shape_list: list[tuple[str, list[int
         ]
     }
 
-    with tvm.transform.PassContext(config=opt_config, opt_level=4):
-        lib = tvm.relay.build(mod, target=target, params=params)
-    
+    with tvm.transform.PassContext(opt_level=4, config=opt_config):
+        lib = relay.build(mod, target=target, params=params)
+
     lib.export_library(lib_path)
 
     return lib_path
 
 
-# TODO: Find better name
-def run_lib(lib_path: str, device: tvm.runtime.Device, benchmark_params = None) -> None:
-    ctypes.CDLL("/net/heap/laudani/tvmonriscv/build/release/build/libcustom_functions.so", ctypes.RTLD_GLOBAL)
+def run_lib(lib_path: str, device: tvm.runtime.Device) -> None:
+    ctypes.CDLL("/net/heap/laudani/tvmonriscv/build/release/build/libprofiling_functions.so", ctypes.RTLD_GLOBAL)
     lib: tvm.runtime.Module = tvm.runtime.load_module(lib_path)
     m = graph_executor.GraphModule(lib["default"](device))
     m.set_input("input0", tvm.nd.array(input_tensor))
     
-    # TODO: Import benchmark parameters
-    if benchmark_params is not None:
-        print("Benchmarking...")
-        timing_results = m.benchmark(  
-            device=device,
-            repeat=benchmark_params["repeat"],
-            number=benchmark_params["number"],
-            end_to_end=False
-        )
-        #TODO: Dump out runtime measurements
-        print(timing_results)
-    else:
-        # TODO: insert timeit to measure runtime
+    for i in range(100):
         start_time = time.time()
         m.run()
         runtime = time.time() - start_time
@@ -64,10 +53,10 @@ def run_lib(lib_path: str, device: tvm.runtime.Device, benchmark_params = None) 
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument("config_filepath", type=str)
+    parser.add_argument("--config", type=str, help="Path to config file")
     args = parser.parse_args()
 
-    with open(args.config_filepath, "r") as file:
+    with open(args.config, "r") as file:
         config = json.load(file)
 
     # Load model
@@ -78,7 +67,6 @@ if __name__ == "__main__":
         except Exception as e:
             print(f"Error loading file: {e}")
     elif model_path in models.list_models():
-        # TODO: Load with corresponding weights
         model = getattr(models, model_path)().eval()
     else:
         raise ValueError(f"Model '{model_path}' is not found.")
@@ -88,13 +76,13 @@ if __name__ == "__main__":
     input_shape_list = [("input0", input_shape)]
     traced_model = torch.jit.trace(model, input_tensor).eval()
 
-    target = tvm.target.Target("llvm -mcpu=znver2")
+    target = tvm.target.Target(f"llvm -mcpu={config['target']}")
     device = tvm.runtime.device("cpu")
 
     lib_path = config["lib_path"]
 
-    # TODO: Change parameter names or insert function code here.
-    lib_path = build_lib(traced_model, input_shape_list, target, lib_path)
+    build_lib(traced_model, input_shape_list, target, lib_path)
 
-    # TODO: Running only for testing purposes
-    run_lib(lib_path)
+    # Python runtime
+    # lib_path = build_lib(traced_model, input_shape_list, target, lib_path)
+    # run_lib(lib_path, device)

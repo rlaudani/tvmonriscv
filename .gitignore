@@ -20,3 +20,8 @@ gmon.out
 *.txt
 
 tvm_auto_scheduler_data
+
+eval/figures
+eval/stats
+
+compile/tvm_test.py

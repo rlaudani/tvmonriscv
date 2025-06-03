@@ -2,14 +2,12 @@ import os
 import argparse
 import pandas as pd
 import matplotlib.pyplot as plt
-import numpy as np
 import torch
 import torch.nn as nn
 import torchvision.models as models
 import json
 
-#TODO: Add pooling layers
-# PROFILED_LAYERS = (nn.Conv2d, nn.Linear, nn.MaxPool2d, nn.AvgPool2d)
+
 PROFILED_LAYERS = (nn.Conv2d, nn.Linear)
 
 
@@ -54,17 +52,22 @@ def create_plot(df: pd.DataFrame, model: nn.Module, input_shape: tuple[int], pat
     plt.savefig(path, format="svg", bbox_inches="tight")
 
 
+def print_stats(df: pd.DataFrame) -> None:
+    stats_df = df.groupby("layer_id")["runtime"].agg(["median", "mean", "std"])
+    print("layer\t\tmedian [ms]\tmean [ms]\tstd [ms]")
+    for idx, row in stats_df.iterrows():
+        print(f"{idx}\t\t{row['median']:.2f}\t\t{row['mean']:.2f}\t\t{row['std']:.2f}")
+
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument("config_filepath", type=str)
+    parser.add_argument("--config", type=str, help="Path to config file")
     args = parser.parse_args()
 
-    with open(args.config_filepath, "r") as file:
+    with open(args.config, "r") as file:
         config = json.load(file)
-        # configs = json.load(file)
 
-    # TODO: CHANGE configs[:1] to configs
-    # for config in configs[:1]:
+    # Load model
     model_path = config["model"]
     if os.path.exists(model_path):
         try:
@@ -72,14 +75,14 @@ if __name__ == "__main__":
         except Exception as e:
             print(f"Error loading file: {e}")
     elif model_path in models.list_models():
-        # TODO: Load with corresponding weights
         model = getattr(models, model_path)().eval()
     else:
         raise ValueError(f"Model '{model_path}' is not found.")
 
     input_shape = tuple(config["input_shape"])
 
-    data = create_dataframe(filepath=config["runtime_stats_path"])
+    data = create_dataframe(filepath=config["layer_runtime_stats_filepath"])
 
-    fig_path = config["fig_path"]
-    create_plot(data, model, input_shape, fig_path)
+    fig_filepath = config["fig_filepath"]
+    print_stats(data)
+    create_plot(data, model, input_shape, fig_filepath)

@@ -19,13 +19,12 @@ mkdir -p $BUILD_DIR
 cd $BUILD_DIR
 cmake \
     -DCMAKE_INSTALL_PREFIX=$INSTALL_DIR \
-    -DCMAKE_BUILD_TYPE=DEBUG \
+    -DCMAKE_BUILD_TYPE=Release \
     -DCMAKE_CXX_COMPILER=clang++ \
     -DCMAKE_C_COMPILER=clang \
     -DUSE_LLVM="$DIR/llvm/build/release/bin/llvm-config --link-static" \
     -DUSE_GRAPH_EXECUTOR=ON \
     -DUSE_PROFILER=ON \
-    -DUSE_RELAY_DEBUG=ON \
     -DUSE_MICRO=ON \
     -DUSE_UMA=ON \
     -DUSE_CPP_RPC=ON \

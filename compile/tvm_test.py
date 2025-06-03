@@ -1,22 +1,17 @@
 import os
 import time
 import tvm
+from tvm import relay, auto_scheduler
 from tvm.contrib import graph_executor
 import torch
 import torch.nn as nn
-import torch.nn.functional as F
+import numpy as np
 import torchvision.models as nn_models
+from tqdm import tqdm
 import ctypes
-import tvm.testing
 
+# from strategy.x86 import conv2d, dense
 import lowering.timing_functions_injection
-from strategy.x86 import conv2d, dense
-
-# False: no printf commands, True: insert printf commands
-INJECT_PRINT_COMMANDS = False
-
-# False: Simple CNN, True: AlexNet
-LARGE_NETWORK = True
 
 num_cores = 1
 os.environ["TVM_NUM_THREADS"] = f"{num_cores}"
@@ -28,8 +23,17 @@ repo_path = os.path.abspath(
 
 def create_lib(mod, params, target, name):
 
-    with tvm.transform.PassContext(opt_level=4):
-        lib = tvm.relay.build(mod, target=target, params=params)
+    opt_config = {
+        "tir.add_lower_pass": [
+            (0, lowering.timing_functions_injection.inject_tracing_conv2d())
+        ]
+    }
+
+    log_file = "tvm_auto_scheduler_data/vgg16_autoschedule.json"
+
+    with auto_scheduler.ApplyHistoryBest(log_file):
+        with tvm.transform.PassContext(opt_level=4, config=opt_config):
+            lib = relay.build(mod, target=target, params=params)
 
     output_dir = f"{repo_path}/models"
     lib_name = f"{name}_pytorch_lib.so"
@@ -40,25 +44,23 @@ def create_lib(mod, params, target, name):
 
 
 def run(lib_name):
-    # ctypes.CDLL("/net/heap/laudani/tvmonriscv/build/release/build/libprofiling_functions.so", ctypes.RTLD_GLOBAL)
+    ctypes.CDLL("/net/heap/laudani/tvmonriscv/build/release/build/libprofiling_functions.so", ctypes.RTLD_GLOBAL)
     lib: tvm.runtime.Module = tvm.runtime.load_module(f"{repo_path}/models/{lib_name}")
     module = graph_executor.GraphModule(lib["default"](dev))
     module.set_input("input0", tvm.nd.array(input_tensor.numpy()))
     print("Evaluate inference time cost.")
-    # timing_results = module.benchmark(
-    #     device=dev,
-    #     repeat=50,
-    #     number=2,
-    #     end_to_end=False
-    # )
-    # print(timing_results)
 
-    for i in range(3) :
-        start_time = time.time()
+    runtimes = []
+    for i in tqdm(range(1)):
+        start_time = time.perf_counter_ns()
         module.run()
-        runtime = time.time() - start_time
-        print(f"Runtime: {runtime}")
+        stop_time = time.perf_counter_ns()
+        runtimes.append(stop_time-start_time)
 
+    median = np.median(runtimes) / 1000000
+    mean = np.mean(runtimes) / 1000000
+    std = np.std(runtimes) / 1000000
+    print(f"Median:\t{median:.3f}\nMean:\t{mean:.3f}\nStd:\t{std:.3f}")
 
 if __name__ == "__main__":
     model_name = "vgg16"
@@ -75,16 +77,10 @@ if __name__ == "__main__":
     target = tvm.target.Target("llvm -mcpu=znver2")
     dev = tvm.cpu(0)
 
-    # target = tvm.target.Target("llvm", host="llvm")
-    # dev = tvm.cpu(0)
-
-    #target, dev = tvm.testing.enabled_targets()[0]
-
-    print("Target: ", target)
-    print("Device: ", dev)
-
     mod, params = tvm.relay.frontend.pytorch.from_pytorch(model, shape_list)
     
     lib_name = create_lib(mod, params, target, model_name)
+
+    lib_name = "vgg16_pytorch_lib.so"
 
     run(lib_name)

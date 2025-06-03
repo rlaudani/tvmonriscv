@@ -29,18 +29,15 @@ export TVM_ROOT=$DIR/tvm
 export CXX=g++
 export TVM_NUM_THREADS=1
 
-# TODO: Decide wether to use loop
-# TODO: use config file from parameter
 # Parse config file
 config_file=${DIR}/config.json
 MODEL_LIB_PATH=$(jq -r '.lib_path' $config_file)
-RUNTIME_STATS_PATH=$(jq -r '.runtime_stats_path' $config_file)
+RUNTIME_STATS_PATH=$(jq -r '.layer_runtime_stats_filepath' $config_file)
 EXEC_NAME=$(jq -r '.exe_name' $config_file)
 
 # Remove old runtime stats file
 rm ${DIR}/${RUNTIME_STATS_PATH}
 
-#
 cmake -DTVM_ROOT=$TVM_ROOT \
     -DCMAKE_BUILD_TYPE=Release \
     -DCMAKE_INSTALL_PREFIX=../ \
@@ -56,7 +53,7 @@ make install
 cd $DIR
 export PYTHONPATH=${DIR}/tvm/python
 export TVM_LIBRARY_PATH=${DIR}/tvm/build/debug/build
-python3 compile/compile_model_x86_profiler.py config.json
+python3 compile/compile_model_x86_profiler.py --config config.json
 
 export LD_LIBRARY_PATH=${DIR}/models:${DIR}/build/release/lib
 
@@ -64,10 +61,10 @@ export LD_LIBRARY_PATH=${DIR}/models:${DIR}/build/release/lib
 for ((i=1; i<=iterations; i++))
 do
     printf "Iteration %4d/%d\n" "$i" "$iterations"
-    ./build/release/bin/${EXEC_NAME}
+    taskset -c 0 ./build/release/bin/${EXEC_NAME}
 done
 
 # Evaluate runtime stats
 if [ "$evaluate" = true ]; then
-    python3 eval/eval.py config.json
+    python3 eval/eval.py --config config.json
 fi

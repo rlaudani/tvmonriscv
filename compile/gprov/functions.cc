@@ -27,7 +27,6 @@ void my_test_end(int id) {
 
 __attribute__((constructor))
 void go() {
-    // TODO: Find better option for reservation
     start_times.reserve(16);
     stop_times.reserve(16);
     return;
@@ -40,9 +39,9 @@ void save_timestamps() {
         printf("Error opening file!");
         return;
     }
-        for (size_t i = 0; i < start_times.size(); ++i) {
-            int64_t elapsed_ns = (int64_t)(stop_times[i].tv_sec - start_times[i].tv_sec) * 1000000000LL
-                                + (stop_times[i].tv_nsec - start_times[i].tv_nsec);
+    for (size_t i = 0; i < start_times.size(); ++i) {
+        int64_t elapsed_ns = (int64_t)(stop_times[i].tv_sec - start_times[i].tv_sec) * 1000000000LL
+                            + (stop_times[i].tv_nsec - start_times[i].tv_nsec);
         fprintf(file, "%d, %lld\n", i, elapsed_ns);
     }
     fclose(file);
