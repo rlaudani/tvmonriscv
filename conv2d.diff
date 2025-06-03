@@ -1,0 +1,12 @@
+--- /net/heap/laudani/tvmonriscv/tvm/python/tvm/topi/x86/conv2d_avx_common.py	2025-06-03 16:28:49.091867808 +0200
++++ /net/heap/laudani/tvmonriscv/compile/strategy/conv2d_patch.py	2025-06-03 16:24:39.965142815 +0200
+@@ -162,6 +162,9 @@
+             s[O].parallel(parallel_axis)
+         else:
+             raise ValueError(f"Unsupported output ndim: {out_ndim}")
++    
++    print("CONV2D: Annotated")
++    s[O].pragma(parallel_axis, "outerloop")
+ 
+     return s
+ 

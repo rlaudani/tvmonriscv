@@ -1,0 +1,12 @@
+--- /net/heap/laudani/tvmonriscv/tvm/python/tvm/topi/x86/dense.py	2025-06-03 16:22:46.456179366 +0200
++++ /net/heap/laudani/tvmonriscv/compile/strategy/dense_patch.py	2025-06-03 16:20:26.175459931 +0200
+@@ -78,6 +78,9 @@
+         s[C].compute_at(s[O], xyt)
+         s[O].vectorize(xi)
+         s[O].parallel(xyt)
++    
++    print("DENSE: Annotated")
++    s[O].pragma(xyt, "outerloop")
+ 
+     return s
+ 
